@@ -185,7 +185,7 @@ inline constexpr auto kKeysCount = ushort(" << keysCount_ << ");\n\
 
 bool Generator::writeAllKeys() {
 	auto file = common::CppFile(basePath_ + "_keys.h", project_);
-	file.include(baseName_ + ".h").newline();
+	file.includeFromLibrary("array").include(baseName_ + ".h").newline();
 	file.pushNamespace("tr").newline();
 	for (const auto &[combination, code] : specializations_) {
 		file.stream() << code;
@@ -193,6 +193,43 @@ bool Generator::writeAllKeys() {
 	for (const auto &declaration : declarations_) {
 		file.stream() << declaration << "\n";
 	}
+	auto brandedIndices = QStringList();
+	for (auto i = 0, count = int(langpack_.entries.size()); i != count; ++i) {
+		const auto &entry = langpack_.entries[i];
+		const auto goodKey = [&](const QString &value) {
+			return entry.key.contains(value);
+		};
+		if (entry.value.contains("Telegram")
+			&& (goodKey("_tray")
+				|| goodKey("lng_tray_icon_text")
+				|| goodKey("lng_error_start_minimized_passcoded")
+				|| goodKey("lng_proxy_unsupported")
+				|| goodKey("lng_bad_photo")
+				|| goodKey("lng_update_telegram")
+				|| goodKey("lng_sure_save_language")
+				|| goodKey("lng_settings_auto_start")
+				|| goodKey("lng_settings_add_sendto")
+				|| goodKey("lng_theme_no_desktop")
+				|| goodKey("lng_download_path_default_radio")
+				|| goodKey("lng_passcode_about")
+				|| goodKey("lng_proxy_sponsor_about")
+				|| goodKey("lng_message_unsupported")
+				|| goodKey("lng_bot_share_location_unavailable")
+				|| goodKey("lng_new_version_wrap")
+				|| goodKey("lng_theme_editor_need_unlock")
+				|| goodKey("lng_payments_not_supported")
+				|| goodKey("lng_group_call_mac_access")
+				|| goodKey("lng_language_not_ready_about")
+				|| goodKey("lng_outdated_")
+				|| goodKey("lng_mac_menu_hide_"))) {
+			brandedIndices.push_back(QString::number(indices_[i]));
+		}
+	}
+	file.stream() << "\ninline constexpr std::array<int, "
+		<< brandedIndices.size()
+		<< "> hasTelegram = { "
+		<< brandedIndices.join(", ")
+		<< " };\n";
 	file.newline().popNamespace();
 	return file.finalize();
 }
@@ -333,66 +370,12 @@ struct phrase<" + tags.join(", ") + "> {\n\
 };\n\
 \n");
 	}
-}
-
-void Generator::writeHeaderProducersInstances() {
-	auto indexesWithTelegram = std::vector<int>();
-	auto index = 0;
-	for (auto &entry : langpack_.entries) {
-		const auto isPlural = !entry.keyBase.isEmpty();
-		const auto &key = entry.key;
-		auto tags = QStringList();
-		for (auto &tagData : entry.tags) {
-			const auto &tag = tagData.tag;
-			tags.push_back("lngtag_" + tag);
-		}
-		if (!isPlural || key == ComputePluralKey(entry.keyBase, 0)) {
-			header_->stream() << "\
-inline constexpr phrase<" << tags.join(", ") << "> " << (isPlural ? entry.keyBase : key) << "{ ushort(" << index << ") };\n";
-		}
-		const auto goodKey = [&](const QString &s) {
-			return entry.key.contains(s);
-		};
-		if (entry.value.contains("Telegram")
-			&& (goodKey("_tray")
-				|| goodKey("lng_tray_icon_text")
-				|| goodKey("lng_error_start_minimized_passcoded")
-				|| goodKey("lng_proxy_unsupported")
-				|| goodKey("lng_bad_photo")
-				|| goodKey("lng_update_telegram")
-				|| goodKey("lng_sure_save_language")
-				|| goodKey("lng_settings_auto_start")
-				|| goodKey("lng_settings_add_sendto")
-				|| goodKey("lng_theme_no_desktop")
-				|| goodKey("lng_download_path_default_radio")
-				|| goodKey("lng_passcode_about")
-				|| goodKey("lng_proxy_sponsor_about")
-				|| goodKey("lng_passcode_about")
-				|| goodKey("lng_message_unsupported")
-				|| goodKey("lng_bot_share_location_unavailable")
-				|| goodKey("lng_new_version_wrap")
-				|| goodKey("lng_theme_editor_need_unlock")
-				|| goodKey("lng_payments_not_supported")
-				|| goodKey("lng_group_call_mac_access")
-				|| goodKey("lng_payments_not_supported")
-				|| goodKey("lng_language_not_ready_about")
-				|| goodKey("lng_outdated_")
-				|| goodKey("lng_mac_menu_hide_")
-			)) {
-			indexesWithTelegram.push_back(index);
-		}
-		++index;
+	const auto plain = specializations.find(QString());
+	if (plain != specializations.end()) {
+		header_->stream() << plain->second;
+		specializations.erase(plain);
 	}
-	header_->newline();
-
-	////////
-	auto indexesWithTelegramString = QString();
-	for (const auto &i : indexesWithTelegram) {
-		indexesWithTelegramString += QString::number(i) + ", ";
-	}
-	header_->stream() << "\
-inline constexpr std::array<int, " << indexesWithTelegram.size() << "> hasTelegram = {" << indexesWithTelegramString << " };\n";
-	header_->newline();
+	specializations_ = std::move(specializations);
 }
 
 bool Generator::writeSource() {
